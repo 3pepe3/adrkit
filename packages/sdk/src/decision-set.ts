@@ -32,6 +32,7 @@ import {
   resolveAsOf,
   resolveSourceMarkers,
   sortFindings,
+  todayUtcDate,
   toGoverningDecisions,
   type Adr,
   type CorpusFinding,
@@ -185,8 +186,6 @@ export function issueFromMarkerScan(scan: SourceMarkerScan): CorpusIssue | undef
  * The handle.
  * ------------------------------------------------------------------ */
 
-const BARE_CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
 /** `adr graph --kind`'s vocabulary, in the order a canonical cache key lists it. */
 const EDGE_KINDS: readonly DecisionEdgeKind[] = ['supersedes', 'relatesTo', 'conflictsWith'];
 const DEFAULT_EDGE_KINDS: readonly DecisionEdgeKind[] = ['supersedes'];
@@ -212,29 +211,23 @@ function resolveEdgeKinds(kinds: readonly DecisionEdgeKind[] | undefined): reado
   return EDGE_KINDS.filter((kind) => kinds.includes(kind));
 }
 
-/**
- * Today's UTC calendar date — `cli-contract.md` §As-Of Resolution's absent-input clause.
- *
- * Inlined, as it is in `packages/cli/src/queue.ts`, `packages/ci/src/queue-action-entrypoint.ts`,
- * and `packages/core/src/scaffold/new.ts`. This is the fourth copy, and ADR-0031 action item 8
- * (a publication gate for this package) exists to replace all four with one core export. It is
- * the one ambient read in the handle, and it happens only when the caller omits `asOf`.
- */
-function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function resolveQueueAsOf(asOf: string | undefined): string {
-  if (asOf === undefined) return todayUtc();
-  // The contract is a bare calendar date only. `resolveAsOf` also accepts zoned datetimes
-  // for the CLI flag; the SDK deliberately does not, so the timezone question is answered
-  // once, by the caller, rather than silently here.
-  if (typeof asOf !== 'string' || !BARE_CALENDAR_DATE.test(asOf) || !resolveAsOf(asOf).ok) {
-    throw new RangeError(
-      `queue({ asOf }) must be a real UTC calendar date in YYYY-MM-DD form; received ${JSON.stringify(asOf)}.`,
-    );
+  // Absent: today's UTC date, from core's one export of `cli-contract.md` §As-Of Resolution's
+  // absent-input clause — the same function `adr queue` and the queue Action call. It is the
+  // one ambient read in the handle, and it happens only when the caller omits `asOf`.
+  if (asOf === undefined) return todayUtcDate();
+  // Supplied: exactly `adr queue --as-of`'s grammar, through the same core rule — a bare
+  // calendar date, or an ISO datetime with an explicit zone, resolved to its UTC calendar date.
+  // A timezone-less datetime is refused rather than guessed, as the CLI refuses it.
+  const resolution = typeof asOf === 'string' ? resolveAsOf(asOf) : undefined;
+  if (resolution === undefined || !resolution.ok) {
+    const reason =
+      resolution?.ok === false && resolution.code === 'tzless'
+        ? 'a datetime needs an explicit timezone (Z or an offset such as +05:00)'
+        : 'expected YYYY-MM-DD or an ISO datetime with an explicit timezone';
+    throw new RangeError(`queue({ asOf }) received ${JSON.stringify(asOf)}: ${reason}.`);
   }
-  return asOf;
+  return resolution.date;
 }
 
 function emptyScan(path: string): SourceMarkerScan {

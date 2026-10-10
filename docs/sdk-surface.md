@@ -189,11 +189,11 @@ follows the CLI command that answers the same question, call for call:
 | `.records` | `lintCorpus().records`, `decisionBucketFor`; `body` is core's `Adr.body` | `adr graph --format json` nodes (id, title, status, order); `body` against each file's text after its closing fence |
 | `.issues` | `lintCorpus().findings`, `sortFindings` | `adr lint --json` findings (`rule` → `code`) |
 | `.get(id)` | id lookup, last duplicate wins as in `toGoverningDecisions`; `31` pads to `0031` | — |
-| `.queue({ asOf })` | `buildQueueReport`; a supplied `asOf` checked with `resolveAsOf` and required to be a bare `YYYY-MM-DD` | `adr queue --format json --as-of` items (including the review counts) and `corpusFindings` |
+| `.queue({ asOf })` | `buildQueueReport`; a supplied `asOf` resolved with `resolveAsOf`, the `adr queue --as-of` grammar (bare date, or a datetime with an explicit zone), and the resolved date echoed | `adr queue --format json --as-of` items (including the review counts) and `corpusFindings` |
 | `.graph({ kinds })` | `buildAdrGraph`, edges filtered to `kinds` (default `['supersedes']`) | nodes: `adr graph --format json`; edges: `--kind supersedes` by default, each `--kind` for one kind, unfiltered for all three |
 | `.governing(path)` | `readSourceMarkers` → `resolveAffects` → `resolveSourceMarkers` → `mergeSourceDeclarations` → `toGoverningDecisions` → `bucketDecisions` → `sortFindings` | `adr explain <path> --json` groups and findings |
 
-Five points where the declared surface left a choice, and how each was settled:
+Six points where the declared surface left a choice, and how each was settled:
 
 - **Issue codes follow the CLI JSON for the same question.** `DecisionSet.issues` and
   `PathGovernance.issues` carry lint rule names verbatim (`corpus-file-skipped`), and
@@ -210,9 +210,17 @@ Five points where the declared surface left a choice, and how each was settled:
   `buildAdrGraph`'s stable id order, never looked up by id, so a corpus that repeats an id
   shows both records, as the CLI does. `get(id)` alone resolves a repeated id to the last
   record, the one `governing` and `adr explain` resolve it to.
-- **The `asOf` default is inlined** as `new Date().toISOString().slice(0, 10)`, a fourth copy of
-  the absent-input clause. ADR-0031 action item 8 — a publication gate for this package —
-  replaces all four with one core export; it is deliberately not done here.
+- **The `asOf` default is core's `todayUtcDate()`**, the one export of `cli-contract.md`
+  §As-Of Resolution's absent-input clause, which `adr queue`, the queue Action, and `adr new`
+  also call. The SDK once inlined a fourth copy; ADR-0031 action item 8 replaced all four.
+- **A supplied `asOf` takes the CLI's whole grammar.** `queue({ asOf })` accepts exactly what
+  `adr queue --as-of` accepts — a bare `YYYY-MM-DD`, or an ISO datetime with an explicit zone —
+  through core's `resolveAsOf`, and `QueueView.asOf` echoes the resolved UTC calendar date; a
+  timezone-less datetime throws `RangeError`. The sketch accepted bare dates only and told a
+  caller with a datetime to import `resolveAsOf` from core, which is the reach-into-core
+  ADR-0031 names as the facade failing; widening the input closed that without a new symbol.
+  The static portal relies on both: it passes a caller's `asOf` (or none) to `queue()` and builds
+  from the echoed date, so it computes no date and restates no grammar of its own.
 
 All filesystem access is `openDecisions` plus `governing`'s marker read through core's confined
 reader (skipped with `readMarkers: false`). Nothing in the package writes. The returned records,
@@ -338,8 +346,16 @@ Decisions this left open, and how they were settled:
 
 - **ADR-0014 rung 1 only.** The implementation has unit, behaviour, and CLI-equivalence tests
   (`packages/sdk/test/`), the equivalence run against two fixture corpora and this repository's
-  own `docs/adr`. No consumer has exercised the surface, because the one it was designed for does
-  not exist yet. ADR-0031's own trade-off — *"the risk is that the guess hardens before the
+  own `docs/adr`, and it is tested against the committed conformance fixture
+  (`packages/core/test/conformance/golden/`, ADR-0031 action item 6) that the CLI's goldens also
+  pin. One consumer outside `packages/sdk/` exercises it: the static portal (`packages/portal`,
+  ADR-0054) calls `openDecisions` and five of the six handle members (`records`, `issues`,
+  `queue`, `graph`, `governing`; not `get`), and takes its default `asOf` from `queue()`'s echo.
+  `bun test` runs it in CI over fixture corpora, and the portal Action's bundle is tested the
+  same way. That consumer is build-time only: it opens a corpus once per build, so the handle's
+  long-lived use is not exercised (ADR-0053 decision 8), and whether it satisfies ADR-0053
+  action item 9 is for the publication record to decide. The consumer the surface was designed
+  for, a Backstage backend, does not exist yet. ADR-0031's own trade-off — *"the risk is that the guess hardens before the
   Backstage plugin tests it"* — is not mitigated by this work, only made concrete enough to
   criticize.
 - **Implemented, not exercised.** The eight-call `explain` assembly the surface claims to absorb

@@ -41557,6 +41557,39 @@ async function lintCorpus(options = {}) {
     records: [...records].sort((a, b) => compareCodeUnits(a.frontmatter.id, b.frontmatter.id))
   };
 }
+// ../core/src/queue/as-of.ts
+function isCalendarDate(candidate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate))
+    return false;
+  const probe = new Date(`${candidate}T00:00:00Z`);
+  return Number.isFinite(probe.getTime()) && probe.toISOString().slice(0, 10) === candidate;
+}
+function resolveAsOf(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return isCalendarDate(value) ? { ok: true, date: value } : { ok: false, code: "invalid" };
+  }
+  const tIndex = value.indexOf("T");
+  if (tIndex !== -1) {
+    const timePart = value.slice(tIndex + 1);
+    const hasTimezone = /Z$/.test(timePart) || /[+-]\d{2}:?\d{2}$/.test(timePart);
+    if (!hasTimezone)
+      return { ok: false, code: "tzless" };
+    if (!isCalendarDate(value.slice(0, tIndex)))
+      return { ok: false, code: "invalid" };
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime()))
+      return { ok: false, code: "invalid" };
+    const resolved = parsed.toISOString().slice(0, 10);
+    return isCalendarDate(resolved) ? { ok: true, date: resolved } : { ok: false, code: "invalid" };
+  }
+  return { ok: false, code: "invalid" };
+}
+function todayUtcDate(now = new Date) {
+  const date = now.toISOString().slice(0, 10);
+  if (!isCalendarDate(date))
+    throw new RangeError(`todayUtcDate: ${now.toISOString()} is outside years 0000-9999.`);
+  return date;
+}
 // ../core/src/graph/build.ts
 function edgeKey(edge) {
   return `${edge.from}\x00${edge.to}\x00${edge.kind}`;
@@ -42236,33 +42269,6 @@ function buildQueueReport(input) {
     corpusFindings
   };
 }
-// ../core/src/queue/as-of.ts
-function isCalendarDate(candidate) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate))
-    return false;
-  const probe = new Date(`${candidate}T00:00:00Z`);
-  return Number.isFinite(probe.getTime()) && probe.toISOString().slice(0, 10) === candidate;
-}
-function resolveAsOf(value) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return isCalendarDate(value) ? { ok: true, date: value } : { ok: false, code: "invalid" };
-  }
-  const tIndex = value.indexOf("T");
-  if (tIndex !== -1) {
-    const timePart = value.slice(tIndex + 1);
-    const hasTimezone = /Z$/.test(timePart) || /[+-]\d{2}:?\d{2}$/.test(timePart);
-    if (!hasTimezone)
-      return { ok: false, code: "tzless" };
-    if (!isCalendarDate(value.slice(0, tIndex)))
-      return { ok: false, code: "invalid" };
-    const parsed = new Date(value);
-    if (!Number.isFinite(parsed.getTime()))
-      return { ok: false, code: "invalid" };
-    const resolved = parsed.toISOString().slice(0, 10);
-    return isCalendarDate(resolved) ? { ok: true, date: resolved } : { ok: false, code: "invalid" };
-  }
-  return { ok: false, code: "invalid" };
-}
 // ../sdk/src/corpus-directory.ts
 import { isAbsolute as isAbsolute4, resolve as resolve5 } from "node:path";
 var CORPUS_DIRECTORY_NOT_FOUND_CODES = new Set(["ENOENT", "ENOTDIR"]);
@@ -42374,7 +42380,6 @@ function issueFromMarkerScan(scan) {
       });
   }
 }
-var BARE_CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 var EDGE_KINDS = ["supersedes", "relatesTo", "conflictsWith"];
 var DEFAULT_EDGE_KINDS = ["supersedes"];
 function resolveEdgeKinds(kinds) {
@@ -42390,16 +42395,15 @@ function resolveEdgeKinds(kinds) {
   }
   return EDGE_KINDS.filter((kind) => kinds.includes(kind));
 }
-function todayUtc() {
-  return new Date().toISOString().slice(0, 10);
-}
 function resolveQueueAsOf(asOf) {
   if (asOf === undefined)
-    return todayUtc();
-  if (typeof asOf !== "string" || !BARE_CALENDAR_DATE.test(asOf) || !resolveAsOf(asOf).ok) {
-    throw new RangeError(`queue({ asOf }) must be a real UTC calendar date in YYYY-MM-DD form; received ${JSON.stringify(asOf)}.`);
+    return todayUtcDate();
+  const resolution = typeof asOf === "string" ? resolveAsOf(asOf) : undefined;
+  if (resolution === undefined || !resolution.ok) {
+    const reason = resolution?.ok === false && resolution.code === "tzless" ? "a datetime needs an explicit timezone (Z or an offset such as +05:00)" : "expected YYYY-MM-DD or an ISO datetime with an explicit timezone";
+    throw new RangeError(`queue({ asOf }) received ${JSON.stringify(asOf)}: ${reason}.`);
   }
-  return asOf;
+  return resolution.date;
 }
 function emptyScan(path) {
   return { path, state: "scanned", markers: [], truncated: false };
@@ -44270,28 +44274,12 @@ var DEFAULT_CONCURRENCY = 16;
 function usage(message) {
   return { exitCode: 2, dataFile: null, data: null, errors: [], message };
 }
-function isCalendarDate2(value) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match)
-    return false;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-}
 function toPosix(path) {
   return path.split(sep6).join("/");
 }
 async function generatePortal(options = {}) {
   const given = resolve6(options.cwd ?? process.cwd());
   const cwd = await realpath2(given).catch(() => given);
-  let asOf;
-  if (options.asOf !== undefined) {
-    if (!isCalendarDate2(options.asOf))
-      return usage(`asOf must be a UTC calendar date YYYY-MM-DD; got "${options.asOf}".`);
-    asOf = options.asOf;
-  } else {
-    asOf = (options.now ?? (() => new Date))().toISOString().slice(0, 10);
-  }
   let baseUrl = null;
   if (options.baseUrl !== undefined && options.baseUrl !== "") {
     let parsed = null;
@@ -44344,6 +44332,15 @@ async function generatePortal(options = {}) {
   } catch (error) {
     if (error instanceof Error && /^Corpus directory (not found|not readable):/.test(error.message)) {
       return usage(error.message);
+    }
+    throw error;
+  }
+  let asOf;
+  try {
+    asOf = handle.queue(options.asOf === undefined ? {} : { asOf: options.asOf }).asOf;
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return usage(`asOf must be YYYY-MM-DD or an ISO datetime with an explicit timezone (e.g. 2026-01-08T00:00:00Z); got "${options.asOf}".`);
     }
     throw error;
   }

@@ -37907,6 +37907,19 @@ async function lintCorpus(options = {}) {
     records: [...records].sort((a, b) => compareCodeUnits(a.frontmatter.id, b.frontmatter.id))
   };
 }
+// ../core/src/queue/as-of.ts
+function isCalendarDate(candidate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate))
+    return false;
+  const probe = new Date(`${candidate}T00:00:00Z`);
+  return Number.isFinite(probe.getTime()) && probe.toISOString().slice(0, 10) === candidate;
+}
+function todayUtcDate(now = new Date) {
+  const date = now.toISOString().slice(0, 10);
+  if (!isCalendarDate(date))
+    throw new RangeError(`todayUtcDate: ${now.toISOString()} is outside years 0000-9999.`);
+  return date;
+}
 // ../core/src/import/status.ts
 var MADR_RECOGNIZED_STATUSES = [
   "draft",
@@ -38368,7 +38381,7 @@ async function main() {
     setFailed(`adrkit queue: could not load the ADR corpus at '${dir}': ${error instanceof Error ? error.message : String(error)}`);
     return;
   }
-  const asOf = new Date().toISOString().slice(0, 10);
+  const asOf = todayUtcDate();
   const report = buildQueueReport({ corpus, asOf });
   const markdown = formatQueueReportMarkdown(report);
   const [owner = "", repo = ""] = (process.env.GITHUB_REPOSITORY ?? "").split("/");
