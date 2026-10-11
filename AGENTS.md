@@ -1116,9 +1116,9 @@ isolated reference repository, and an in-repository consumer stays at rung 1
   fails on any diff. The plugin owns them; never edit the copies, and never
   copy `board-page.mjs`, `board.mjs`, `panel-http.mjs`, or
   `board-review-write.mjs`.
-- **Page assets are text imports.** `src/page/assets.ts` imports the page and
-  two vendor modules `with { type: 'text' }`, so `bun build --target=node`
-  embeds them. `canvas-theme.mjs` is imported as a module (for `THEME_CSS`)
+- **Page assets are text imports.** `src/page/assets.ts` imports the page files
+  (the icon among them) and two vendor modules `with { type: 'text' }`, so
+  `bun build --target=node` embeds them. `canvas-theme.mjs` is imported as a module (for `THEME_CSS`)
   and cannot also be a text import in the same bundle, which is why it is not
   written into the output.
 
@@ -1227,7 +1227,9 @@ is unmeasured. Load-bearing:
 - **The portal is per corpus at `/portal/{corpus}/`.** `/` redirects
   relatively when one corpus is configured and lists them otherwise; links stay
   relative so a gateway base path survives. Portal files carry the page's CSP
-  plus `frame-ancestors 'none'`.
+  plus `frame-ancestors 'none'`. Its `portal-data.json` sets `pathLookup` to
+  this server's own `governing` route (#315); the page prints it as text and
+  never requests it, so do not add a fetch or loosen `connect-src` for it.
 - **Configuration is `ADRKIT_SERVER_CORPORA`** (`key[=dir],...` or JSON),
   confined under `ADRKIT_SERVER_ROOT` by `realpath`, at start and before every
   load. As PID 1 the binary handles SIGTERM itself.
