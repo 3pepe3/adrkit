@@ -200,13 +200,18 @@ Five question types:
 | `cite` | list of span ids from this bundle | none | `value` |
 | `text` | string, at most 2,000 code points | none | presence only |
 
-When optional probabilities are supplied, they must agree with `value`. For
-`yes-no`, `value` must equal `probability >= 0.5`. For `one-of` and `level`,
-the probabilities must sum to 1 within 1e-6, and `value` must be the argmax,
-with ties broken by declared order. Disagreement is a contract error. Any
-threshold other than 0.5 is a calibration decision and belongs to 012, by
-record. Probabilities are recorded as evidence that 012's drift metric may
-read. **They are never a routing input.** FR-016 already bars a model's
+When optional probabilities are supplied, every one must be a finite number in
+[0, 1], and they must agree with `value`. For `yes-no`, `value` must equal
+`probability >= 0.5`. For `one-of` and `level`, there must be exactly one
+probability per declared option or level, keyed by it, they must sum to 1
+within 1e-6, and `value` must be the argmax, with ties broken by declared
+order. A vector such as `[-1, 2]` sums to 1 and is still refused. Any
+violation is a contract error. Any threshold other than 0.5 is a calibration
+decision and belongs to 012, by record. Probabilities are recorded as separate
+evidence, beside the scores and not inside them. 012's FR-019 drift metric is
+defined over raw and post-drop surviving scores and does not read them; any
+metric that does needs 012 to define it first. **They are never a routing
+input.** FR-016 already bars a model's
 confidence from `low-confidence`, and this contract gives no other trigger a
 path to it. A fractional score is never accepted: `level` is an integer,
 because both vendors disclaim the interpolated value.
@@ -245,9 +250,15 @@ rule on Q4.
 
 | Outcome | Example | Result |
 |---|---|---|
-| **Malformed** | Wrong envelope token, unknown key, duplicate key, wrong type, value outside the declared domain, probabilities that disagree with `value`, unknown span id, `bundleId` mismatch | Typed contract error at the boundary. Exit `2`, as for `SnapshotContractError`. Nothing from the response is used. **Never `PassAbsence`.** |
+| **Malformed** | Wrong envelope token, unknown key, duplicate key, wrong type, value outside the declared domain, a probability outside [0, 1] or missing for a declared option, probabilities that disagree with `value`, an omitted Pass 3 output, unknown span id, `bundleId` mismatch | Typed contract error at the boundary. Exit `2`, as for `SnapshotContractError`. Nothing from the response is used. **Never `PassAbsence`.** |
 | **Refused** | `{ "refused": true }` with no answers, or no response at all | `PassAbsence` for that pass, with the reason. Evidence was never produced. |
-| **Unanswered** | A question id missing from `answers` | That item is `evidence-absent`. Every other answer is used. |
+| **Unanswered** | A question id missing from `answers`, other than a Pass 3 output | That item is `evidence-absent`. Every other answer is used. |
+
+The one exception is the four Pass 3 outputs. FR-014 requires each to be
+present or **explicitly** absent, so an omitted Pass 3 output answer is
+malformed, not unanswered: the explicit absence is an empty-string `value`
+(clause 8). Omission cannot stand in for it, or a harness that dropped a slot
+would read as one that judged it empty.
 
 A malformed response is a broken integration, not missing evidence. Counting it
 as absence would drain 012's marginal denominator silently, which is the
@@ -301,9 +312,12 @@ This is a stated limit of that class of responder, not a defect:
 | Pass 3 outputs and their presence | `text`, with presence meaning non-empty `value` | **No** |
 | Pass 3 `bearsOn` | `yes-no` per dimension | Only alongside a present output |
 
-A Pass 3 slot is present **only** when its `text` answer is non-empty, so a
-slot can never be filled with invented content (FR-014). A responder that
-cannot generate therefore produces a Pass 3 `PassAbsence`, and
+A Pass 3 slot is present **only** when its `text` answer is non-empty, and
+explicitly absent when it is the empty string. Every Pass 3 output must be
+answered one way or the other (clause 5), so a slot can never be filled with
+invented content or dropped silently (FR-014). A relay for a responder that
+cannot generate answers a Pass 3 bundle with `refused`, which produces a
+Pass 3 `PassAbsence`, and
 `pass-disagreement` records `evidence-absent`. What an unanswered
 "missing thing" does to a Pass 2 score is 011 and 012's to define. This record
 carries the question and its absence, nothing more.
@@ -443,7 +457,8 @@ return.
        T004 stays open with them.
 2. [ ] 012 T008 defines `RubricScoreSnapshot` and `AdversarialSnapshot` so they
        can express validated span-id citations, per-slot presence, per-dimension
-       `bearsOn`, the declared responder, and optional probabilities as evidence.
+       `bearsOn`, the declared responder, and optional probabilities as
+       evidence kept separate from the scores FR-019 reads.
        This record constrains those shapes and does not define them.
 3. [ ] After 011's Phase 0 clears, and no earlier: the span cutter, the
        question catalog, and the response validator in `@adrkit/evaluator`,
