@@ -1079,7 +1079,11 @@ The nested build-only Action (`packages/ci/portal`, `dist/portal-action.js`)
 is described below.
 **Rung 1**: unit, contract, purity, and mutation tests, a Node run of the
 bundled generator, and a maintainer browser check on this repository's corpus.
-Load-bearing:
+Since #310, `site.yml` also builds this repository's corpus with the shipped
+portal Action and publishes it at <https://adrkit.dev/decisions/>. That is
+supplemental dogfood, not rung 2: ADR-0014's rung 2 needs a run in a separate,
+isolated reference repository, and an in-repository consumer stays at rung 1
+(ADR-0053). Load-bearing:
 
 - **It lives outside the CLI.** ADR-0033 decision 11 keeps HTML out of
   `@adrkit/cli`; do not add an `adr site` or `--format html`.
@@ -1128,7 +1132,8 @@ documented workflow is in `site/src/content/docs/ci.mdx`. **Rung 1**: unit,
 contract, and mutation tests, and a Node run of the committed bundle against a
 git fixture. `site.yml` builds this repository's corpus with it into
 `/decisions/` on adrkit.dev and checks the bundle (`scripts/check-portal-bundle.ts`);
-that is rung 2 only once a deploy has been observed serving it. Load-bearing:
+that deploy is supplemental dogfood; rung 2 needs a run in an isolated reference
+repository (ADR-0014). Load-bearing:
 
 - **Logic is `src/portal-action.ts`, wiring is the entrypoint.** Only
   `portal-action-entrypoint.ts` imports `@actions/*`, as for the queue Action,
@@ -1196,11 +1201,13 @@ external/community validation has been recorded.
 ## The read-only REST server (`packages/server`)
 
 `@adrkit/server` (private) is the image's `server` selector, under
-[ADR-0055](./docs/adr/0055-serve-a-read-only-rest-api-over-the-sdk-in-the-oci-image-and-reach-mcp-clients-th.md)
+[ADR-0055](./docs/adr/0055-serve-a-read-only-rest-api-over-the-sdk-in-the-oci-image-and-reach-mcp-clients-t.md)
 (**accepted**). **It authenticates no one.** `node:http` over `@adrkit/sdk`
 and `@adrkit/portal`'s pure builder, and nothing else (`check-deps` admits
-exactly those two). **Rung 1**: unit, contract, and side-effect-denial tests
-plus a local Podman smoke; the APIM path is unmeasured. Load-bearing:
+exactly those two). **Implemented, rung 1** (#314): unit, contract, and
+side-effect-denial tests, a local Podman smoke, and a CI container smoke of the
+`server` selector under `--read-only` with a `:ro` corpus mount; the APIM path
+is unmeasured. Load-bearing:
 
 - **The route table is the server.** `src/routes.ts` is data; the dispatcher
   matches it and `/openapi.json` is generated from it. Every row is `GET`;
