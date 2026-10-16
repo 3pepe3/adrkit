@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { packageRoot } from './manifest-fixture.ts';
+import { type ExtensionManifest, packageRoot } from './manifest-fixture.ts';
 
 const [specifyArg, adrArg, archiveArg] = process.argv.slice(2);
 if (!specifyArg || !adrArg) {
@@ -62,13 +62,21 @@ if (archiveArg) {
 const info = JSON.parse(await run([specify, 'extension', 'info', 'adrkit', '--json'], project)) as Record<string, unknown>;
 assert.equal(info['id'], 'adrkit');
 const installed = join(project, '.specify/extensions/adrkit');
-const extension = Bun.YAML.parse(readFileSync(join(installed, 'extension.yml'), 'utf8'));
-assert.equal(extension.hooks.after_plan.optional, true);
-assert.equal(extension.hooks.after_plan.command, 'speckit.adrkit.check');
-const registration = Bun.YAML.parse(readFileSync(join(project, '.specify/extensions.yml'), 'utf8'));
+// The official installer has validated the manifest; these assertions verify
+// that its installed schema and registered hook retain our runtime boundary.
+const extension = Bun.YAML.parse(readFileSync(join(installed, 'extension.yml'), 'utf8')) as ExtensionManifest;
+const declaredHook = extension.hooks?.['after_plan'];
+assert(declaredHook);
+assert.equal(declaredHook.optional, true);
+assert.equal(declaredHook.command, 'speckit.adrkit.check');
+const registration = Bun.YAML.parse(readFileSync(join(project, '.specify/extensions.yml'), 'utf8')) as {
+  hooks: { after_plan: Array<{ optional: boolean; command: string }> };
+};
 assert.equal(registration.hooks.after_plan.length, 1);
-assert.equal(registration.hooks.after_plan[0].optional, true);
-assert.equal(registration.hooks.after_plan[0].command, 'speckit.adrkit.check');
+const registeredHook = registration.hooks.after_plan[0];
+assert(registeredHook);
+assert.equal(registeredHook.optional, true);
+assert.equal(registeredHook.command, 'speckit.adrkit.check');
 for (const name of ['context', 'check', 'draft']) {
   const skillPath = join(project, '.agents/skills', `speckit-adrkit-${name}`, 'SKILL.md');
   assert(existsSync(skillPath), `Codex skill was not registered: ${skillPath}`);

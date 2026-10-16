@@ -368,6 +368,7 @@ or drafted by these checks.
 | Native feature selection | `.specify/feature.json` selects `specs/900-selected-by-pointer`; neither ADRKIT_FEATURE_DIR nor SPECIFY environment overrides are supplied. The official prerequisite resolver selects its plan. |
 | Real CLI context/check | Exit 0, byte-identical fixture tree before/after; zero writes, including no feature-pointer rewrite. No snapshot configured, so deterministic routing is explicitly unavailable. |
 | Real CLI draft | Exit 0; exactly one new draft ADR, ID 0002, correct title; all existing files unchanged. The feature pointer remains byte-identical. |
+| Explicit live verifier typecheck | Pass with TypeScript 7.0.2, Bun 1.3.14 types, strict mode and noUncheckedIndexedAccess; scoped to the verifier and its manifest fixture, without a whole-monorepo build. |
 
 Reproduce with already-installed executables:
 
