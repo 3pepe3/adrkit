@@ -33,8 +33,10 @@ Plus one hook: `after_plan` offers to run `/speckit.adrkit.check`. It is
 - This fork additionally verifies 1.2.1 with Codex native skills, feature-pointer
   selection and @adrkit/cli 0.20.0. Other 1.2 integrations and native Windows
   execution have not been measured. See the dated verification addendum.
-- The `adr` CLI (`npm install -g @adrkit/cli`), a project-local installation,
-  or `ADRKIT_CLI` pointing at its entry point.
+- A reviewed fork `adr` runtime at the project's executable `.specify/bin/adr`,
+  a standalone project-local/PATH installation, or `ADRKIT_CLI` pointing at its
+  entry point. For an offline standalone installation, use an already reviewed
+  local fork artifact: `pnpm add --offline /path/to/reviewed-fork-cli.tgz`.
 - An ADR corpus. Defaults to `docs/adr`.
 
 ## Install
@@ -124,9 +126,19 @@ with environment variables when needed.
 | `ADRKIT_SNAPSHOT` | unset | Snapshot bundle enabling the deterministic evaluator |
 | `ADRKIT_AS_OF` | today, UTC | Evaluation date |
 
-The CLI is resolved in a fixed order: `ADRKIT_CLI`, then
-`./node_modules/.bin/adr`, then `adr` on `PATH`. No branch of that reaches the
-network — a missing CLI is reported, never fetched.
+The CLI is resolved from the project working directory in a fixed order:
+
+1. Explicit `ADRKIT_CLI`, retaining the existing JavaScript-entrypoint support.
+2. Executable project wrapper `./.specify/bin/adr`.
+3. Only for a standalone project without `.specify/native-lock.json`,
+   `./node_modules/.bin/adr`, then `adr` on `PATH`.
+
+A managed project whose wrapper is missing or not executable stops before either
+fallback. Restore its locked runtime through the project's reviewed offline setup;
+an unrelated local or PATH executable cannot replace it. An explicit `ADRKIT_CLI`
+still takes precedence. No resolution branch downloads or installs a package, and
+the missing-CLI diagnostic recommends only a reviewed local fork artifact with
+`pnpm --offline`, never an automatic or upstream installation.
 
 ## Runtime guarantees
 
